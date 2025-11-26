@@ -19,9 +19,9 @@
 
   <properties>
     <!-- Use Java 21 LTS (change to 24 only if you actually run on JDK 24) -->
-    <java.version>21</java.version>
+    <java.version>24</java.version>
 
-    <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
+    <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <surefire.plugin.version>3.1.2</surefire.plugin.version>
 
     <!-- use a released byte-buddy version available in Maven Central -->
