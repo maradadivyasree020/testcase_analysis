@@ -58,8 +58,14 @@ public class StoryReportGenerator {
             - All stress/performance test scenarios (mocked)
             - Any logical scenario implied by the story or API
             
-            Your output must be a JSON object containing:
-            - "reportMarkdown": a full QA report
+            CRITICAL: Your ENTIRE response must be ONLY a JSON object. 
+            Do NOT include any explanatory text before or after the JSON.
+            Do NOT wrap the JSON in markdown code fences.
+            Do NOT include comments or preamble.
+            Output ONLY raw JSON.
+
+            The JSON object must contain:
+            - "reportMarkdown": a full QA report as a markdown string
             - "tests": an array of objects { "className": string, "javaCode": string }
 
             You may generate MULTIPLE test classes.
@@ -80,7 +86,7 @@ public class StoryReportGenerator {
     1. Generate test classes in logical groups (ValidTests, InvalidTests, EdgeTests, etc).
     2. Include every meaningful scenario the story implies.
     3. Include all combinations of inputs, boundary values, and errors.
-    4. Return JSON exactly in this structure:
+    4. Return ONLY a JSON object with this exact structure:
 
     {
       "reportMarkdown": "string",
@@ -93,6 +99,7 @@ public class StoryReportGenerator {
     }
 
     Generate the maximum number of tests possible.
+    RESPOND WITH ONLY JSON. NO OTHER TEXT.
     """.formatted(storyYaml);
 
 
@@ -134,17 +141,29 @@ public class StoryReportGenerator {
         // 5. Clean JSON response (strip markdown code fences if present)
         jsonContent = cleanJsonResponse(jsonContent);
 
-        // 6. Parse JSON into TestGenerationResult
+        // 6. Parse JSON into TestGenerationResult with fallback
         ObjectMapper mapper = new ObjectMapper();
-        TestGenerationResult result =
-                mapper.readValue(jsonContent, TestGenerationResult.class);
+        TestGenerationResult result;
+        try {
+            result = mapper.readValue(jsonContent, TestGenerationResult.class);
+        } catch (Exception e) {
+            System.err.println("⚠️  Warning: Failed to parse LLM response as JSON: " + e.getMessage());
+            System.err.println("Response started with: " + jsonContent.substring(0, Math.min(100, jsonContent.length())));
+            System.err.println("Treating entire response as markdown report...");
+            
+            result = new TestGenerationResult();
+            result.setReportMarkdown(jsonContent);
+            result.setTests(null);
+            
+            System.err.println("Falling back to plain markdown report (no generated tests).");
+        }
 
-        // 6. Write Markdown report
+        // 7. Write Markdown report
         Path reportPath = Path.of(outputFile);
         Files.createDirectories(reportPath.getParent());
         Files.writeString(reportPath, result.getReportMarkdown());
 
-        // 7. Write generated test classes
+        // 8. Write generated test classes
         if (result.getTests() != null) {
             for (TestGenerationResult.GeneratedTest t : result.getTests()) {
                 writeTestClass(t);
