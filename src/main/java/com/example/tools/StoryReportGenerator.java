@@ -99,7 +99,23 @@ public class StoryReportGenerator {
         // 3. Prepare LLM client (from env vars)
         String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://openrouter.ai/api
         String apiKey = getEnvOrThrow("LLM_API_KEY");
-        String model = System.getenv().getOrDefault("LLM_MODEL", "gpt-4.1");
+        String model = System.getenv().getOrDefault("LLM_MODEL", "gpt-4.1"); // adjust
+
+        // Validate and sanitize LLM_BASE_URL
+        baseUrl = baseUrl.trim();
+        if (baseUrl.contains("\n") || baseUrl.contains("\r")) {
+            throw new IllegalArgumentException(
+                "LLM_BASE_URL contains newlines or carriage returns. " +
+                "This usually means the secret is malformed in GitHub Actions. " +
+                "Make sure the secret value is a single line with no trailing whitespace."
+            );
+        }
+        if (baseUrl.endsWith("/v1/chat/completions")) {
+            throw new IllegalArgumentException(
+                "LLM_BASE_URL should be the BASE URL (e.g., https://api.openrouter.io), " +
+                "NOT the full endpoint path. Remove /v1/chat/completions from the end."
+            );
+        }
 
         LlmClient llmClient = new LlmClient(baseUrl, apiKey, model);
 

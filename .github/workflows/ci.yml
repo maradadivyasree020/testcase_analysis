@@ -34,14 +34,26 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p reports
+          echo "Generating AI report from story: stories/ATT-123.yaml"
+          echo "LLM_BASE_URL is set to: $LLM_BASE_URL"
           mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator \
               -Dexec.args="--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md" \
               -Dexec.cleanupDaemonThreads=false \
               org.codehaus.mojo:exec-maven-plugin:3.1.0:java || {
-            echo "Error: LLM API call failed. Check that:"
-            echo "  - LLM_BASE_URL is set correctly (base URL without /v1/chat/completions)"
-            echo "  - LLM_API_KEY is valid"
-            echo "  - The LLM provider supports /v1/chat/completions endpoint"
+            echo ""
+            echo "ERROR: AI report generation failed. Troubleshooting:"
+            echo ""
+            echo "1. Check LLM_BASE_URL:"
+            echo "   - Should be a base URL: https://api.openrouter.io (for OpenRouter) or https://api.openai.com (for OpenAI)"
+            echo "   - Must NOT include /v1/chat/completions"
+            echo "   - Must NOT have trailing newlines or whitespace"
+            echo ""
+            echo "2. Check LLM_API_KEY:"
+            echo "   - Should be a valid API key from your LLM provider"
+            echo "   - Test locally first: \`mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator ...\`"
+            echo ""
+            echo "3. Verify the LLM provider supports /v1/chat/completions endpoint"
+            echo ""
             exit 1
           }
 
@@ -52,9 +64,17 @@ jobs:
           echo "# AI Report Unavailable" > reports/ATT-123-ai-report.md
           echo "" >> reports/ATT-123-ai-report.md
           echo "The AI story report was not generated. Possible reasons:" >> reports/ATT-123-ai-report.md
-          echo "- LLM secrets (LLM_BASE_URL, LLM_API_KEY) are not configured" >> reports/ATT-123-ai-report.md
-          echo "- LLM API returned an error (e.g., 405 Method Not Allowed)" >> reports/ATT-123-ai-report.md
-          echo "- Network/timeout issue connecting to the LLM provider" >> reports/ATT-123-ai-report.md
+          echo "- LLM secrets (LLM_BASE_URL, LLM_API_KEY) are not configured in repository settings" >> reports/ATT-123-ai-report.md
+          echo "- LLM_BASE_URL is malformed (has newlines, trailing slashes, or includes /v1/chat/completions)" >> reports/ATT-123-ai-report.md
+          echo "- LLM_API_KEY is invalid or expired" >> reports/ATT-123-ai-report.md
+          echo "- LLM provider is unreachable or returned an error" >> reports/ATT-123-ai-report.md
+          echo "" >> reports/ATT-123-ai-report.md
+          echo "## Fix Instructions" >> reports/ATT-123-ai-report.md
+          echo "1. Go to your GitHub repository Settings → Secrets and variables → Actions" >> reports/ATT-123-ai-report.md
+          echo "2. Create or update these secrets:" >> reports/ATT-123-ai-report.md
+          echo "   - \`LLM_BASE_URL\`: e.g., https://api.openrouter.io (for OpenRouter) or https://api.openai.com (for OpenAI)" >> reports/ATT-123-ai-report.md
+          echo "   - \`LLM_API_KEY\`: Your API key from the provider" >> reports/ATT-123-ai-report.md
+          echo "3. Push a new commit to trigger the workflow again" >> reports/ATT-123-ai-report.md
 
       - name: Upload AI story report
         uses: actions/upload-artifact@v4
