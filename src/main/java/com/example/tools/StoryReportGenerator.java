@@ -37,7 +37,6 @@ public class StoryReportGenerator {
         // 1. Read YAML story
         String storyYaml = Files.readString(Path.of(storyFile));
 
-        // (optional) parse to Map just to ensure YAML is valid
         Yaml yaml = new Yaml();
         Map<String, Object> storyMap = yaml.load(storyYaml);
         String storyId = String.valueOf(storyMap.getOrDefault("id", "UNKNOWN"));
@@ -64,7 +63,7 @@ public class StoryReportGenerator {
                 1. A detailed test plan in Markdown.
                 2. JUnit 5 test classes that cover positive, negative, and edge cases.
                 
-                Output your entire answer as a SINGLE JSON object matching this Java class:
+                Output your entire answer as a SINGLE JSON object matching this Java structure:
                 
                 {
                   "reportMarkdown": "string",
@@ -80,7 +79,7 @@ public class StoryReportGenerator {
         // 3. Prepare LLM client (from env vars)
         String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://openrouter.ai/api
         String apiKey = getEnvOrThrow("LLM_API_KEY");
-        String model = System.getenv().getOrDefault("LLM_MODEL", "gpt-4.1"); // adjust
+        String model = System.getenv().getOrDefault("LLM_MODEL", "gpt-4.1");
 
         LlmClient llmClient = new LlmClient(baseUrl, apiKey, model);
 

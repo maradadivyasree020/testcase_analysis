@@ -15,11 +15,14 @@ public class LlmResponse {
     }
 
     public String getFirstContentOrThrow() {
-        if (choices == null || choices.isEmpty()
-                || choices.get(0).getMessage() == null) {
-            throw new IllegalStateException("LLM returned no choices/content");
+        if (choices == null || choices.isEmpty()) {
+            throw new IllegalStateException("LLM returned no choices");
         }
-        return choices.get(0).getMessage().getContent();
+        Choice choice = choices.get(0);
+        if (choice.getMessage() == null || choice.getMessage().getContent() == null) {
+            throw new IllegalStateException("LLM returned empty content");
+        }
+        return choice.getMessage().getContent();
     }
 
     public static class Choice {

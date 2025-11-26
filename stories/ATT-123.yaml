@@ -6,8 +6,8 @@ story: >
 
 business_rules:
   - Only active students can be marked.
-  - Date cannot be in the future.
-  - Subject must belong to faculty.
+  - Attendance date cannot be in the future.
+  - Subject must belong to the faculty.
 
 api_spec:
   method: POST
@@ -32,4 +32,8 @@ acceptance_criteria:
   - Valid request → 200 summary.
   - Invalid subject → 404.
   - Empty entries → 400 EMPTY_BATCH.
-  - Some invalid students → in invalidStudentIds.
+  - Some invalid students → listed in invalidStudentIds.
+
+edge_cases:
+  - Duplicate studentId in entries.
+  - Large batch of 500 students.
