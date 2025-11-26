@@ -1,0 +1,35 @@
+id: ATT-123
+title: Mark batch attendance
+story: >
+  As a faculty, I want to mark attendance for a batch of students
+  so that I can efficiently record attendance for an entire class.
+
+business_rules:
+  - Only active students can be marked.
+  - Date cannot be in the future.
+  - Subject must belong to faculty.
+
+api_spec:
+  method: POST
+  path: /api/attendance/batch
+  request:
+    date: string(YYYY-MM-DD)
+    subjectId: string
+    entries:
+      - studentId: string
+        present: boolean
+  responses:
+    200:
+      total: integer
+      marked: integer
+      invalidStudentIds: string[]
+    400:
+      codes: [EMPTY_BATCH]
+    404:
+      codes: [SUBJECT_NOT_FOUND]
+
+acceptance_criteria:
+  - Valid request → 200 summary.
+  - Invalid subject → 404.
+  - Empty entries → 400 EMPTY_BATCH.
+  - Some invalid students → in invalidStudentIds.
