@@ -30,12 +30,21 @@ jobs:
         run: mvn -B -DskipTests clean package
 
       - name: Generate tests & AI report from story
+        if: ${{ env.LLM_BASE_URL != '' && env.LLM_API_KEY != '' }}
         run: |
           mkdir -p reports
           mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator \
               -Dexec.args="--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md" \
               -Dexec.cleanupDaemonThreads=false \
               org.codehaus.mojo:exec-maven-plugin:3.1.0:java
+
+      - name: Write placeholder AI report (LLM secrets missing)
+        if: ${{ !(env.LLM_BASE_URL != '' && env.LLM_API_KEY != '') }}
+        run: |
+          mkdir -p reports
+          echo "# AI Report Skipped" > reports/ATT-123-ai-report.md
+          echo "" >> reports/ATT-123-ai-report.md
+          echo "The AI story report was skipped because LLM secrets are not configured in this run." >> reports/ATT-123-ai-report.md
 
       - name: Upload AI story report
         uses: actions/upload-artifact@v4
