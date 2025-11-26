@@ -1,0 +1,99 @@
+name: Java CI + Functional Tests + Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      # optional: start a real DB service for integration tests
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build & run unit tests
+        run: mvn -B -DskipITs=false clean verify
+
+      - name: Package artifact
+        run: mvn -B package -DskipTests
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
+
+  functional-tests:
+    needs: build-test
+    runs-on: ubuntu-latest
+    env:
+      APP_PORT: 8080
+      BASE_URL: http://localhost:8080
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: ./artifact
+
+      - name: Start app (background)
+        run: |
+          nohup java -jar ./artifact/*.jar --spring.profiles.active=test > app.log 2>&1 &
+          echo "Waiting for app to boot..."
+          n=0; until curl -sSf http://localhost:8080/actuator/health || [ $n -gt 30 ]; do n=$((n+1)); sleep 2; done
+          cat app.log || true
+
+      - name: Install Newman (for Postman collections)
+        run: |
+          npm ci -g newman@5
+
+      - name: Run Postman collection with Newman
+        run: |
+          # Expect your Postman collection at postman/collection.json and environment at postman/env.json (optional)
+          newman run postman/collection.json -e postman/env.json --reporters cli,junit --reporter-junit-export newman-report.xml
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: newman-report.xml
+
+  deploy:
+    needs: functional-tests
+    if: github.ref == 'refs/heads/main' && needs.functional-tests.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Heroku (example)
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+        run: |
+          # Using Heroku jar deploy (via container or API). Example simple release via Heroku CLI (needs container or buildpack)
+          echo "Deploy steps go here — choose your target (Heroku, EKS, EB, GCP)."
