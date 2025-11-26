@@ -43,38 +43,58 @@ public class StoryReportGenerator {
 
         // 2. Build prompts
         String systemPrompt = """
-                You are a senior QA engineer and test architect for Java Spring Boot applications.
-                You will receive a YAML describing a user story, business rules, API specs, and acceptance criteria.
-                You must return a JSON object with:
-                - "reportMarkdown": a detailed test/QA report in Markdown
-                - "tests": array of objects { "className": string, "javaCode": string }.
-                
-                The Java code must be valid JUnit 5 tests for a typical Spring Boot app.
-                """;
+            You are a senior QA engineer and test architect for Java Spring Boot applications.
 
-        String userPrompt = """
-                Here is the YAML describing the story and API:
-                
-                ```yaml
-                %s
-                ```
-                
-                Please generate:
-                1. A detailed test plan in Markdown.
-                2. JUnit 5 test classes that cover positive, negative, and edge cases.
-                
-                Output your entire answer as a SINGLE JSON object matching this Java structure:
-                
-                {
-                  "reportMarkdown": "string",
-                  "tests": [
-                    {
-                      "className": "MyTests",
-                      "javaCode": "import org.junit.jupiter.api.Test; ..."
-                    }
-                  ]
-                }
-                """.formatted(storyYaml);
+            You must generate UNLIMITED test cases.
+            There is NO upper limit. Produce as many tests as needed to cover:
+
+            - All positive scenarios
+            - All negative scenarios
+            - All edge cases
+            - All boundary cases
+            - All error cases
+            - All validation failures
+            - All security-related test cases
+            - All stress/performance test scenarios (mocked)
+            - Any logical scenario implied by the story or API
+            
+            Your output must be a JSON object containing:
+            - "reportMarkdown": a full QA report
+            - "tests": an array of objects { "className": string, "javaCode": string }
+
+            You may generate MULTIPLE test classes.
+            The Java code must be valid JUnit 5.
+        """;
+
+       String userPrompt = """
+    Here is the YAML describing the story and API:
+
+    ```yaml
+    %s
+    ```
+
+    Generate ALL possible test cases. 
+    There is NO LIMIT — produce as many test cases as necessary.
+
+    Requirements:
+    1. Generate test classes in logical groups (ValidTests, InvalidTests, EdgeTests, etc).
+    2. Include every meaningful scenario the story implies.
+    3. Include all combinations of inputs, boundary values, and errors.
+    4. Return JSON exactly in this structure:
+
+    {
+      "reportMarkdown": "string",
+      "tests": [
+        {
+          "className": "AnyNameTests",
+          "javaCode": "public class AnyNameTests { ... }"
+        }
+      ]
+    }
+
+    Generate the maximum number of tests possible.
+    """.formatted(storyYaml);
+
 
         // 3. Prepare LLM client (from env vars)
         String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://openrouter.ai/api
