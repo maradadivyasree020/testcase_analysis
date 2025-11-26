@@ -1,0 +1,26 @@
+{
+  "name": "ai-story-analysis",
+  "private": true,
+  "scripts": {
+    "analyze-pr": "node .github/ai/ai-story-analysis.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^19.0.7",
+    "openai": "^4.5.0",
+    "p-retry": "^5.0.0"
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maradadivyasree020/testcase_analysis.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/maradadivyasree020/testcase_analysis/issues"
+  },
+  "homepage": "https://github.com/maradadivyasree020/testcase_analysis#readme",
+  "description": ""
+}
