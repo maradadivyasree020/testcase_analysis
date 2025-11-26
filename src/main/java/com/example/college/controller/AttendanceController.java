@@ -40,7 +40,7 @@ public class AttendanceController {
     @PutMapping("/mark")
     public ResponseEntity<?> markSingle(@RequestBody AttendanceDTO dto) {
         if (dto == null || dto.getEmployeeId() == null || dto.getAbsent() == null) {
-            return ResponseEntity.badRequest().body(Map.of("message", "employeeId and absent required"));
+            return ResponseEntity.badRequest().body(Map.of("message", "employeeI and absent required"));
         }
 
         LocalDate markDate = dto.getDate() == null ? LocalDate.now() : dto.getDate();
