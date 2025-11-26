@@ -232,20 +232,14 @@ package com.example.tools;
 import com.example.tools.llm.LlmClient;
 import com.example.tools.llm.dto.LlmRequest;
 import com.example.tools.llm.dto.LlmResponse;
-import com.example.tools.model.TestGenerationResult;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
 public class StoryReportGenerator {
-
-    private static final String GENERATED_TEST_DIR =
-            "src/test/java/com/example/generated";
 
     // Safe default upper bound; can be overridden by env LLM_MAX_TOKENS
     private static final int DEFAULT_MAX_TOKENS = 2500;
@@ -273,64 +267,48 @@ public class StoryReportGenerator {
         Map<String, Object> storyMap = yaml.load(storyYaml);
         String storyId = String.valueOf(storyMap.getOrDefault("id", "UNKNOWN"));
 
-        // 2. Build prompts (compact + strict JSON)
+        // 2. Build prompts (focus on markdown report, not code generation)
         String systemPrompt = """
-                You are a senior QA engineer and test architect for Java Spring Boot applications.
+                You are a senior QA engineer and test architect. Your task is to create a comprehensive
+                QA analysis and test plan report in Markdown format.
 
-                You must output ONLY a SINGLE VALID JSON OBJECT. Do NOT output anything before or after the JSON.
-                Do NOT wrap the JSON in ``` fences. Do NOT add comments or explanations outside JSON.
+                You must output ONLY a SINGLE, VALID MARKDOWN document. Do NOT output JSON, code blocks, or any non-Markdown.
 
-                The JSON MUST have exactly this shape:
+                The report should include:
+                - Executive summary of test scenarios
+                - Positive test cases and expected outcomes
+                - Negative test cases and error handling
+                - Edge cases and boundary value analysis
+                - Performance and stress scenarios
+                - Security considerations
 
-                {
-                  "reportMarkdown": "string",
-                  "tests": [
-                    {
-                      "className": "SomeName",
-                      "javaCode": "public class SomeName { ... }"
-                    }
-                  ]
-                }
-
-                Constraints (to stay within token/length limits):
-                - TOTAL test methods across all classes: AT MOST 10.
-                - TOTAL test classes: AT MOST 2.
-                - Keep reportMarkdown reasonably short (under ~300 lines).
-
-                The tests must:
-                - Cover positive, negative, edge, boundary, and validation scenarios.
-                - Use JUnit 5 and typical Spring Boot testing patterns.
+                Write clear, actionable test case descriptions that can be implemented by developers.
+                Keep the markdown well-structured with headings, lists, and clear formatting.
                 """;
 
         String userPrompt = """
-                Here is the YAML describing the story and API:
+                Here is the API specification you need to analyze:
 
                 ```yaml
                 %s
                 ```
 
-                TASK:
-                Generate a compact but thorough set of tests that respect the constraints:
+                Generate a COMPREHENSIVE QA TEST PLAN in Markdown format.
 
-                - At most 10 test methods total across all classes.
-                - At most 2 test classes.
-                - Focus on the most important and representative scenarios.
+                Include:
+                1. Overview of the API functionality
+                2. Test Case Categories (Positive, Negative, Edge Cases, Security)
+                3. For each category, list specific test scenarios with:
+                   - Test case ID
+                   - Description
+                   - Input parameters
+                   - Expected outcome
+                   - Edge cases or special considerations
 
-                Your ENTIRE response MUST be ONLY a SINGLE JSON object of the form:
-
-                {
-                  "reportMarkdown": "string",
-                  "tests": [
-                    {
-                      "className": "SomeName",
-                      "javaCode": "public class SomeName { ... }"
-                    }
-                  ]
-                }
-
-                DO NOT output any text, Markdown, or code fences before or after this JSON.
-                If needed, shorten the content to keep the JSON valid and within size limits.
+                DO NOT include JSON, code, or any non-Markdown content.
+                Output ONLY a valid Markdown document.
                 """.formatted(storyYaml);
+
 
         // 3. Prepare LLM client (from env vars)
         String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://openrouter.ai/api
@@ -348,7 +326,8 @@ public class StoryReportGenerator {
         );
 
         // Force JSON-object response mode (OpenAI/OpenRouter style)
-        request.setResponse_format(Map.of("type", "json_object"));
+        // NOTE: Disabled since we're now requesting Markdown only
+        // request.setResponse_format(Map.of("type", "json_object"));
 
         // Cap tokens so we don't blow the credit/size limit
         int maxTokens = getMaxTokensFromEnvOrDefault();
@@ -356,98 +335,18 @@ public class StoryReportGenerator {
 
         // 4. Call LLM
         LlmResponse response = llmClient.callLlm(request);
-        String jsonContent = response.getFirstContentOrThrow();
+        String reportContent = response.getFirstContentOrThrow();
 
-        // 5. Parse JSON into TestGenerationResult
-        ObjectMapper mapper = new ObjectMapper();
-        TestGenerationResult result =
-                mapper.readValue(jsonContent, TestGenerationResult.class);
-
-        // 6. Write Markdown report
+        // 5. Write Markdown report directly (no JSON parsing needed)
         Path reportPath = Path.of(outputFile);
         Files.createDirectories(reportPath.getParent());
-        Files.writeString(reportPath, result.getReportMarkdown());
+        Files.writeString(reportPath, reportContent);
 
-        // 7. Write generated test classes
-        if (result.getTests() != null) {
-            for (TestGenerationResult.GeneratedTest t : result.getTests()) {
-                writeTestClass(t);
-            }
-        }
-
-        System.out.printf("Story %s processed. Report: %s (max_tokens=%d)%n",
+        System.out.printf("✅ Story %s processed. Report: %s (max_tokens=%d)%n",
                 storyId, outputFile, maxTokens);
     }
 
-    private static void writeTestClass(TestGenerationResult.GeneratedTest test) throws IOException {
-        String className = test.getClassName();
-        if (className == null || className.isBlank()) {
-            throw new IllegalArgumentException("Generated test has no className");
-        }
 
-        String javaCode = test.getJavaCode();
-        if (javaCode == null || javaCode.isBlank()) {
-            System.err.println("⚠️  Warning: Test class " + className + " has no javaCode. Skipping.");
-            return;
-        }
-
-        // Sanitize the generated Java code: fix common issues with LLM-generated code
-        javaCode = sanitizeGeneratedJavaCode(javaCode);
-
-        Path dir = Path.of(GENERATED_TEST_DIR);
-        Files.createDirectories(dir);
-
-        Path file = dir.resolve(className + ".java");
-        Files.writeString(file, javaCode);
-        System.out.println("Generated test: " + file);
-    }
-
-    /**
-     * Sanitizes Java code generated by LLM to fix common issues.
-     * LLMs sometimes produce code with unescaped quotes, malformed strings, etc.
-     */
-    private static String sanitizeGeneratedJavaCode(String code) {
-        // Common issue: unescaped quotes inside strings
-        // Replace problematic patterns like: methodName("some "quoted" text")
-        // with: methodName("some \"quoted\" text")
-
-        StringBuilder result = new StringBuilder();
-        boolean inString = false;
-        char stringChar = '\0';
-        boolean inEscape = false;
-
-        for (int i = 0; i < code.length(); i++) {
-            char c = code.charAt(i);
-
-            if (inEscape) {
-                result.append(c);
-                inEscape = false;
-                continue;
-            }
-
-            if (c == '\\') {
-                result.append(c);
-                inEscape = true;
-                continue;
-            }
-
-            if (!inString && (c == '"' || c == '\'')) {
-                // Entering string
-                inString = true;
-                stringChar = c;
-                result.append(c);
-            } else if (inString && c == stringChar) {
-                // Check if this could be an unescaped quote
-                // (very simple heuristic: if we hit a quote that's not escaped)
-                result.append(c);
-                inString = false;
-            } else {
-                result.append(c);
-            }
-        }
-
-        return result.toString();
-    }
 
 
     private static String getEnvOrThrow(String key) {
