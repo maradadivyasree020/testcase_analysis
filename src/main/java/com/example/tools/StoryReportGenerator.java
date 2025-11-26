@@ -131,7 +131,10 @@ public class StoryReportGenerator {
         LlmResponse response = llmClient.callLlm(request);
         String jsonContent = response.getFirstContentOrThrow();
 
-        // 5. Parse JSON into TestGenerationResult
+        // 5. Clean JSON response (strip markdown code fences if present)
+        jsonContent = cleanJsonResponse(jsonContent);
+
+        // 6. Parse JSON into TestGenerationResult
         ObjectMapper mapper = new ObjectMapper();
         TestGenerationResult result =
                 mapper.readValue(jsonContent, TestGenerationResult.class);
@@ -165,6 +168,37 @@ public class StoryReportGenerator {
         System.out.println("Generated test: " + file);
     }
 
+    /**
+     * Cleans JSON response by stripping markdown code fences.
+     * LLMs sometimes wrap JSON in ```json ... ``` fences even when asked for raw JSON.
+     * This method removes those fences and returns clean JSON.
+     */
+    private static String cleanJsonResponse(String response) {
+        if (response == null || response.isBlank()) {
+            return response;
+        }
+
+        String trimmed = response.trim();
+
+        // Check for markdown code fence pattern: ```json\n...\n```
+        if (trimmed.startsWith("```json")) {
+            // Remove opening ```json
+            trimmed = trimmed.substring(7).trim(); // Remove "```json"
+
+            // Remove closing ```
+            if (trimmed.endsWith("```")) {
+                trimmed = trimmed.substring(0, trimmed.length() - 3).trim();
+            }
+        } else if (trimmed.startsWith("```")) {
+            // Generic code fence without language specifier
+            trimmed = trimmed.substring(3).trim();
+            if (trimmed.endsWith("```")) {
+                trimmed = trimmed.substring(0, trimmed.length() - 3).trim();
+            }
+        }
+
+        return trimmed;
+    }
     private static String getEnvOrThrow(String key) {
         String value = System.getenv(key);
         if (value == null || value.isBlank()) {
