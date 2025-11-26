@@ -195,7 +195,7 @@ public class StoryReportGenerator {
             "src/test/java/com/example/generated";
 
     // 🔴 Safe upper bound for free-tier (can change or make env-driven)
-    private static final int DEFAULT_MAX_TOKENS = 3500;
+    private static final int DEFAULT_MAX_TOKENS = 3000;
 
     public static void main(String[] args) throws Exception {
         String storyFile = null;
@@ -220,63 +220,43 @@ public class StoryReportGenerator {
         Map<String, Object> storyMap = yaml.load(storyYaml);
         String storyId = String.valueOf(storyMap.getOrDefault("id", "UNKNOWN"));
 
-        // 2. Build prompts (now mention "within a reasonable size")
-        // String systemPrompt = """
-        //         You are a senior QA engineer and test architect for Java Spring Boot applications.
-
-        //         You will receive a YAML describing a user story, business rules, API specs, and acceptance criteria.
-
-        //         You must generate as many meaningful test cases as possible
-        //         WHILE staying within a reasonable response size (do not exceed the token budget).
-
-        //         Cover at least:
-        //         - Positive scenarios
-        //         - Negative scenarios
-        //         - Edge & boundary cases
-        //         - Error and validation failures
-        //         - Any important security / stress scenarios (summarized if needed)
-
-        //         Return a JSON object with:
-        //         - "reportMarkdown": detailed QA report in Markdown
-        //         - "tests": array of { "className": string, "javaCode": string }
-
-        //         The Java code must be valid JUnit 5.
-        //         """;
         String systemPrompt = """
     You are a senior QA engineer and test architect for Java Spring Boot applications.
 
     You will receive a YAML describing a user story, business rules, API specs, and acceptance criteria.
 
-    You must generate a FINITE, COMPACT set of test cases (maximum ~15 tests total)
-    that still covers:
+    Generate a COMPACT but THOROUGH test suite:
+    - HARD LIMIT: at most 8–10 test methods total
+    - HARD LIMIT: at most 2 test classes
+    - Keep the Markdown report short (under ~300 lines)
+
+    Cover:
     - Positive scenarios
     - Negative scenarios
     - Edge & boundary cases
-    - Error and validation failures
+    - Validation and error scenarios
 
-    Return a JSON object with:
+    Return ONLY a JSON object with:
     - "reportMarkdown": detailed QA report in Markdown
     - "tests": array of { "className": string, "javaCode": string }
 
     The Java code must be valid JUnit 5.
-    Do NOT include any text before or after the JSON.
-    Do NOT wrap the JSON in ``` fences.
+    Do NOT output anything before or after the JSON.
+    Do NOT wrap JSON in ``` fences.
     """;
 
-String userPrompt = """
+    String userPrompt = """
     Here is the YAML describing the story and API:
 
     ```yaml
     %s
     ```
 
-    Generate a compact but thorough set of test cases.
-    HARD LIMIT: at most 15 test methods in total across all classes.
+    Generate a compact test suite:
 
-    Requirements:
-    1. Include positive, negative, edge, boundary, and error scenarios.
-    2. You may output multiple test classes with different className values.
-    3. Each test class must be a complete, compilable Java file.
+    - Total test methods across all classes: MAX 10
+    - Total test classes: MAX 2
+    - Choose the most important scenarios only.
 
     Output ONLY a SINGLE JSON object in this structure:
 
@@ -291,35 +271,7 @@ String userPrompt = """
     }
     """.formatted(storyYaml);
 
-
-        
-
-        // String userPrompt = """
-        //         Here is the YAML describing the story and API:
-
-        //         ```yaml
-        //         %s
-        //         ```
-
-        //         Generate as many test cases as you can within the response limit.
-
-        //         Requirements:
-        //         1. Include positive, negative, edge, boundary, and error scenarios.
-        //         2. You may output multiple test classes with different className values.
-        //         3. Each test class must be a complete compilable Java file.
-
-        //         Output ONLY a SINGLE JSON object in this structure:
-
-        //         {
-        //           "reportMarkdown": "string",
-        //           "tests": [
-        //             {
-        //               "className": "AnyNameTests",
-        //               "javaCode": "public class AnyNameTests { ... }"
-        //             }
-        //           ]
-        //         }
-        //         """.formatted(storyYaml);
+    
 
         // 3. Prepare LLM client (from env vars)
         String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://openrouter.ai/api
@@ -336,9 +288,9 @@ String userPrompt = """
                 )
         );
 
+        request.setResponse_format(Map.of("type", "json_object"));
         // 🔴 NEW: cap the response tokens so OpenRouter doesn’t throw 402
         int maxTokens = getMaxTokensFromEnvOrDefault();
-        request.setResponse_format(Map.of("type", "json_object"));
         request.setMax_tokens(maxTokens);
 
         // 4. Call LLM
