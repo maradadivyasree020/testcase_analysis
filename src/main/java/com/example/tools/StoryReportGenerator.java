@@ -293,17 +293,32 @@ public class StoryReportGenerator {
         LlmResponse response = llmClient.callLlm(request);
         String jsonContent = response.getFirstContentOrThrow();
 
-        // 5. Parse JSON into TestGenerationResult
+        // 5. Parse JSON into TestGenerationResult with fallback
         ObjectMapper mapper = new ObjectMapper();
-        TestGenerationResult result =
-                mapper.readValue(jsonContent, TestGenerationResult.class);
+        TestGenerationResult result;
+        try {
+            result = mapper.readValue(jsonContent, TestGenerationResult.class);
+        } catch (Exception e) {
+            System.err.println("⚠️  Warning: Failed to parse LLM response as JSON: " + e.getMessage());
+            System.err.println("Attempting to extract Markdown report from raw response...");
+            
+            // Fallback: try to extract reportMarkdown manually
+            String fallbackMarkdown = "# QA Report - Partial\n\nThe LLM response was invalid JSON (likely unescaped quotes in generated code).\n\n" +
+                    "Raw LLM response:\n\n```\n" + jsonContent + "\n```";
+            
+            result = new TestGenerationResult();
+            result.setReportMarkdown(fallbackMarkdown);
+            result.setTests(null);
+            
+            System.err.println("Falling back to plain report (no generated tests).");
+        }
 
         // 6. Write Markdown report
         Path reportPath = Path.of(outputFile);
         Files.createDirectories(reportPath.getParent());
         Files.writeString(reportPath, result.getReportMarkdown());
 
-        // 7. Write generated test classes
+        // 7. Write generated test classes (if any)
         if (result.getTests() != null) {
             for (TestGenerationResult.GeneratedTest t : result.getTests()) {
                 writeTestClass(t);
