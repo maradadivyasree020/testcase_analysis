@@ -31,20 +31,30 @@ jobs:
 
       - name: Generate tests & AI report from story
         if: ${{ env.LLM_BASE_URL != '' && env.LLM_API_KEY != '' }}
+        continue-on-error: true
         run: |
           mkdir -p reports
           mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator \
               -Dexec.args="--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md" \
               -Dexec.cleanupDaemonThreads=false \
-              org.codehaus.mojo:exec-maven-plugin:3.1.0:java
+              org.codehaus.mojo:exec-maven-plugin:3.1.0:java || {
+            echo "Error: LLM API call failed. Check that:"
+            echo "  - LLM_BASE_URL is set correctly (base URL without /v1/chat/completions)"
+            echo "  - LLM_API_KEY is valid"
+            echo "  - The LLM provider supports /v1/chat/completions endpoint"
+            exit 1
+          }
 
-      - name: Write placeholder AI report (LLM secrets missing)
-        if: ${{ !(env.LLM_BASE_URL != '' && env.LLM_API_KEY != '') }}
+      - name: Write placeholder AI report (LLM secrets missing or generation failed)
+        if: ${{ failure() || !(env.LLM_BASE_URL != '' && env.LLM_API_KEY != '') }}
         run: |
           mkdir -p reports
-          echo "# AI Report Skipped" > reports/ATT-123-ai-report.md
+          echo "# AI Report Unavailable" > reports/ATT-123-ai-report.md
           echo "" >> reports/ATT-123-ai-report.md
-          echo "The AI story report was skipped because LLM secrets are not configured in this run." >> reports/ATT-123-ai-report.md
+          echo "The AI story report was not generated. Possible reasons:" >> reports/ATT-123-ai-report.md
+          echo "- LLM secrets (LLM_BASE_URL, LLM_API_KEY) are not configured" >> reports/ATT-123-ai-report.md
+          echo "- LLM API returned an error (e.g., 405 Method Not Allowed)" >> reports/ATT-123-ai-report.md
+          echo "- Network/timeout issue connecting to the LLM provider" >> reports/ATT-123-ai-report.md
 
       - name: Upload AI story report
         uses: actions/upload-artifact@v4

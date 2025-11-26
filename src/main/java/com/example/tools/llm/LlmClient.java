@@ -18,12 +18,31 @@ public class LlmClient {
     }
 
     public LlmResponse callLlm(LlmRequest request) {
-        return webClient.post()
-                .uri("/v1/chat/completions") // adjust if provider differs
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(LlmResponse.class)
-                .block();
+        try {
+            return webClient.post()
+                    .uri("/v1/chat/completions") // adjust if provider differs
+                    .bodyValue(request)
+                    .retrieve()
+                    .onStatus(
+                        status -> !status.is2xxSuccessful(),
+                        response -> {
+                            return response.bodyToMono(String.class).map(body ->
+                                new RuntimeException(
+                                    "LLM API HTTP error (likely 405 Method Not Allowed)" +
+                                    "\nEndpoint attempted: /v1/chat/completions" +
+                                    "\nVerify LLM_BASE_URL is correct (base URL without /v1/chat/completions)" +
+                                    "\nResponse: " + body
+                                )
+                            );
+                        }
+                    )
+                    .bodyToMono(LlmResponse.class)
+                    .block();
+        } catch (Exception e) {
+            String msg = "LLM API call failed: " + e.getMessage() +
+                         "\nCheck that LLM_BASE_URL and LLM_API_KEY are correctly configured.";
+            throw new RuntimeException(msg, e);
+        }
     }
 
     public String getModel() {
