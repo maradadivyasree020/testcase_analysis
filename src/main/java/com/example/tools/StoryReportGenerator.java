@@ -274,9 +274,12 @@ public class StoryReportGenerator {
     
 
         // 3. Prepare LLM client (from env vars)
-        String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://openrouter.ai/api
+        String baseUrl = getEnvOrThrow("LLM_BASE_URL");   // e.g. https://api.openrouter.io or https://api.openai.com
         String apiKey = getEnvOrThrow("LLM_API_KEY");
-        String model = System.getenv().getOrDefault("LLM_MODEL", "openai/gpt-4.1");
+        // Default to gpt-4-turbo (works for OpenAI and most OpenRouter setups)
+        String model = System.getenv().getOrDefault("LLM_MODEL", "gpt-4-turbo");
+
+        System.out.println("Using model: " + model);
 
         LlmClient llmClient = new LlmClient(baseUrl, apiKey, model);
 

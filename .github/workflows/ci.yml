@@ -36,6 +36,7 @@ jobs:
           mkdir -p reports
           echo "Generating AI report from story: stories/ATT-123.yaml"
           echo "LLM_BASE_URL is set to: $LLM_BASE_URL"
+          echo "LLM_MODEL is: ${LLM_MODEL:-gpt-4-turbo (default)}"
           mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator \
               -Dexec.args="--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md" \
               -Dexec.cleanupDaemonThreads=false \
@@ -43,16 +44,22 @@ jobs:
             echo ""
             echo "ERROR: AI report generation failed. Troubleshooting:"
             echo ""
-            echo "1. Check LLM_BASE_URL:"
-            echo "   - Should be a base URL: https://api.openrouter.io (for OpenRouter) or https://api.openai.com (for OpenAI)"
-            echo "   - Must NOT include /v1/chat/completions"
-            echo "   - Must NOT have trailing newlines or whitespace"
+            echo "1. Check LLM_BASE_URL and LLM_MODEL:"
+            echo "   For OpenAI (https://api.openai.com):"
+            echo "     - LLM_MODEL should be: gpt-4, gpt-4-turbo, or gpt-3.5-turbo"
+            echo "   For OpenRouter (https://openrouter.ai/api/v1):"
+            echo "     - LLM_MODEL should be: openai/gpt-4, meta-llama/llama-2-70b, etc"
+            echo "   Endpoint: /v1/chat/completions is added automatically"
             echo ""
             echo "2. Check LLM_API_KEY:"
             echo "   - Should be a valid API key from your LLM provider"
-            echo "   - Test locally first: \`mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator ...\`"
+            echo "   - Verify it's not expired or revoked"
             echo ""
-            echo "3. Verify the LLM provider supports /v1/chat/completions endpoint"
+            echo "3. Test locally:"
+            echo "   export LLM_BASE_URL=https://api.openai.com"
+            echo "   export LLM_API_KEY=sk-..."
+            echo "   export LLM_MODEL=gpt-4-turbo"
+            echo "   mvn -DskipTests compile exec:java -Dexec.mainClass=com.example.tools.StoryReportGenerator -Dexec.args='--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md'"
             echo ""
             exit 1
           }
