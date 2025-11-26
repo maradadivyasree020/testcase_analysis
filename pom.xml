@@ -22,10 +22,10 @@
     <java.version>21</java.version>
 
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
-    <surefire.plugin.version>3.1.2</surefire.plugin.version>
+    <surefire.plugin.version>3.2.2</surefire.plugin.version>
 
-    <!-- use a released byte-buddy version available in Maven Central -->
-    <bytebuddy.version>1.17.5</bytebuddy.version>
+    <!-- ByteBuddy 1.15.0+ supports Java 21 properly -->
+    <bytebuddy.version>1.15.8</bytebuddy.version>
     <mockito.version>5.11.0</mockito.version>
   </properties>
 
@@ -72,12 +72,11 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Byte Buddy (test) -->
+    <!-- Byte Buddy (runtime needed for Hibernate with Java 21) -->
     <dependency>
       <groupId>net.bytebuddy</groupId>
       <artifactId>byte-buddy</artifactId>
       <version>${bytebuddy.version}</version>
-      <scope>test</scope>
     </dependency>
 
 	<dependency>
