@@ -2,9 +2,9 @@ package com.example.college;
 
 import com.example.tools.spec.TestSpec;
 import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.api.DisplayName;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,7 +13,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
-import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,26 +20,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Spec-driven test: reads qa/ATT-123-tests.yaml from classpath
+ * Spec-driven test: reads qa/ATT-123-tests.yaml from test classpath
  * and runs one parameterized test per test case.
  */
-@SpringBootTest(classes = CollegeApplication.class)  // ⬅️ CHANGE IF YOUR MAIN CLASS NAME IS DIFFERENT
+@SpringBootTest(classes = CollegeApplication.class) // <-- change if your main class is different
 @AutoConfigureMockMvc
 public class SpecDrivenAttendanceApiTest {
 
     @Autowired
     MockMvc mockMvc;
 
-    // classpath resource under src/test/resources
-    private static final String SPEC_PATH = "qa/ATT-123-tests.yaml";
+    // src/test/resources/qa/ATT-123-tests.yaml
+    private static final String SPEC_PATH = "/qa/ATT-123-tests.yaml";
 
-    /**
-     * Loads the YAML spec and exposes each test case as an argument
-     * to the @ParameterizedTest below.
-     */
     static Stream<TestCaseWithMeta> testCases() throws Exception {
-        ClassLoader cl = SpecDrivenAttendanceApiTest.class.getClassLoader();
-        try (InputStream is = cl.getResourceAsStream(SPEC_PATH)) {
+        try (InputStream is = SpecDrivenAttendanceApiTest.class.getResourceAsStream(SPEC_PATH)) {
             if (is == null) {
                 throw new IllegalStateException("Spec file not found on classpath: " + SPEC_PATH);
             }
@@ -56,13 +50,12 @@ public class SpecDrivenAttendanceApiTest {
         }
     }
 
-    @ParameterizedTest(name = "TC {0.testCase.id}: {0.testCase.description}")
+    @ParameterizedTest(name = "{0}") // <-- uses TestCaseWithMeta.toString()
     @MethodSource("testCases")
     @DisplayName("Spec-driven API tests for ATT-123")
     void runSpecDrivenTests(TestCaseWithMeta data) throws Exception {
         TestSpec.TestCase tc = data.testCase;
 
-        // For now we assume POST (based on your API), but we can extend to GET/PUT later
         var requestBuilder = post(data.path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(tc.getRequestBody());
@@ -98,6 +91,7 @@ public class SpecDrivenAttendanceApiTest {
 
         @Override
         public String toString() {
+            // This string is used in @ParameterizedTest(name = "{0}")
             return "TC " + testCase.getId() + ": " + testCase.getDescription();
         }
     }
