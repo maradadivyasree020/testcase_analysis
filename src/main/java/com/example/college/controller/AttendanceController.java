@@ -48,7 +48,7 @@ public class AttendanceController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/mark-batch")
+    @PostMapping({"/mark-batch", "/batch"})
     @Transactional
     public ResponseEntity<Map<String, Object>> markBatch(@RequestBody List<AttendanceDTO> payload) {
         if (payload == null || payload.isEmpty()) {
