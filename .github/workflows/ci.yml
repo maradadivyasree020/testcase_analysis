@@ -12,8 +12,9 @@ jobs:
 
     env:
       LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
-      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+      LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL:    ${{ secrets.LLM_MODEL }}
+      LLM_MAX_TOKENS: "2500"
 
     steps:
       - name: Checkout
@@ -29,6 +30,7 @@ jobs:
       - name: Build (skip tests)
         run: mvn -B -DskipTests clean package
 
+      # 1️⃣ Generate AI report + AI tests FROM STORY (runs StoryReportGenerator in CI)
       - name: Generate tests & AI report from story
         if: ${{ env.LLM_BASE_URL != '' && env.LLM_API_KEY != '' }}
         continue-on-error: true
@@ -36,34 +38,19 @@ jobs:
           mkdir -p reports
           echo "Generating AI report from story: stories/ATT-123.yaml"
           echo "LLM_BASE_URL is set to: $LLM_BASE_URL"
-          echo "LLM_MODEL is: ${LLM_MODEL:-gpt-4-turbo (default)}"
-          mvn -Dexec.mainClass=com.example.tools.StoryReportGenerator \
+          echo "LLM_MODEL is: ${LLM_MODEL:-openai/gpt-4.1 (default)}"
+
+          mvn -DskipTests compile \
+              -Dexec.mainClass=com.example.tools.StoryReportGenerator \
               -Dexec.args="--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md" \
               -Dexec.cleanupDaemonThreads=false \
               org.codehaus.mojo:exec-maven-plugin:3.1.0:java || {
             echo ""
-            echo "ERROR: AI report generation failed. Troubleshooting:"
-            echo ""
-            echo "1. Check LLM_BASE_URL and LLM_MODEL:"
-            echo "   For OpenAI (https://api.openai.com):"
-            echo "     - LLM_MODEL should be: gpt-4, gpt-4-turbo, or gpt-3.5-turbo"
-            echo "   For OpenRouter (https://openrouter.ai/api/v1):"
-            echo "     - LLM_MODEL should be: openai/gpt-4, meta-llama/llama-2-70b, etc"
-            echo "   Endpoint: /v1/chat/completions is added automatically"
-            echo ""
-            echo "2. Check LLM_API_KEY:"
-            echo "   - Should be a valid API key from your LLM provider"
-            echo "   - Verify it's not expired or revoked"
-            echo ""
-            echo "3. Test locally:"
-            echo "   export LLM_BASE_URL=https://api.openai.com"
-            echo "   export LLM_API_KEY=sk-..."
-            echo "   export LLM_MODEL=gpt-4-turbo"
-            echo "   mvn -DskipTests compile exec:java -Dexec.mainClass=com.example.tools.StoryReportGenerator -Dexec.args='--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md'"
-            echo ""
+            echo "ERROR: AI report generation failed. See logs above."
             exit 1
           }
 
+      # 2️⃣ If LLM secrets missing OR generation failed, write a placeholder report
       - name: Write placeholder AI report (LLM secrets missing or generation failed)
         if: ${{ failure() || !(env.LLM_BASE_URL != '' && env.LLM_API_KEY != '') }}
         run: |
@@ -79,25 +66,16 @@ jobs:
           echo "## Fix Instructions" >> reports/ATT-123-ai-report.md
           echo "1. Go to your GitHub repository Settings → Secrets and variables → Actions" >> reports/ATT-123-ai-report.md
           echo "2. Create or update these secrets:" >> reports/ATT-123-ai-report.md
-          echo "   - \`LLM_BASE_URL\`: e.g., https://api.openrouter.io (for OpenRouter) or https://api.openai.com (for OpenAI)" >> reports/ATT-123-ai-report.md
+          echo "   - \`LLM_BASE_URL\`: e.g., https://openrouter.ai/api or https://api.openai.com" >> reports/ATT-123-ai-report.md
           echo "   - \`LLM_API_KEY\`: Your API key from the provider" >> reports/ATT-123-ai-report.md
+          echo "   - \`LLM_MODEL\`: e.g., openai/gpt-4.1" >> reports/ATT-123-ai-report.md
           echo "3. Push a new commit to trigger the workflow again" >> reports/ATT-123-ai-report.md
 
-      - name: Upload AI story report
-        uses: actions/upload-artifact@v4
-        with:
-          name: ATT-123-ai-report
-          path: reports/ATT-123-ai-report.md
-
+      # 3️⃣ Run tests in CI (includes AI-generated tests if generation succeeded)
       - name: Run tests (includes AI-generated tests)
         run: mvn -B test
 
-      - name: Print custom test summary (ACCEPTED / REJECTED)
-        run: |
-          mvn -Dexec.mainClass=com.example.tools.TestResultSummaryGenerator \
-              -Dexec.cleanupDaemonThreads=false \
-              org.codehaus.mojo:exec-maven-plugin:3.1.0:java
-
+      # 4️⃣ Check if surefire reports exist
       - name: Check for surefire reports
         id: check-surefire
         run: |
@@ -107,6 +85,31 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      # 5️⃣ Generate custom ACCEPTED / REJECTED summary and append to AI report
+      - name: Generate test summary and append to AI report
+        if: steps.check-surefire.outputs.exists == 'true'
+        run: |
+          # Run the summary generator and capture output
+          mvn -Dexec.mainClass=com.example.tools.TestResultSummaryGenerator \
+              -Dexec.cleanupDaemonThreads=false \
+              org.codehaus.mojo:exec-maven-plugin:3.1.0:java > summary.txt
+
+          # Ensure reports dir exists
+          mkdir -p reports
+
+          # Append summary into the same AI report markdown
+          echo "" >> reports/ATT-123-ai-report.md
+          echo "## 7. Execution Summary" >> reports/ATT-123-ai-report.md
+          cat summary.txt >> reports/ATT-123-ai-report.md
+
+      # 6️⃣ Upload final AI report (plan + execution result) as artifact
+      - name: Upload AI story report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATT-123-ai-report
+          path: reports/ATT-123-ai-report.md
+
+      # 7️⃣ Upload JUnit reports if they exist
       - name: Upload JUnit reports
         if: steps.check-surefire.outputs.exists == 'true'
         uses: actions/upload-artifact@v4

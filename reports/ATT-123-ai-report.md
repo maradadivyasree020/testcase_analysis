@@ -1,18 +1,95 @@
-# QA Report - Partial
+# Mark Batch Attendance API: QA Test Plan
 
-The LLM response was invalid JSON (likely unescaped quotes in generated code).
+## 1. Executive Summary of Test Scenarios
 
-Raw LLM response:
+This test plan covers the "Mark batch attendance" API designed for faculty usage to record the attendance of a class conveniently. The goals of this testing are to ensure that the API correctly handles valid scenarios and gracefully degrades upon receiving invalid input while maintaining data security and managing high loads.
 
-```
-{
-  "reportMarkdown": "# QA Test Report for ATT-123: Mark Batch Attendance API\n\n## Overview\nThis suite tests the `/api/attendance/batch` endpoint, focusing on business rules, API contract, and critical edge and error scenarios as specified.\n\n## Coverage\n- **Positive**: Standard marking, large batch, duplicate IDs with consistent/inconsistent presence.\n- **Negative**: Invalid/empty input, subject ownership, date in future, invalid students.\n- **Validation**: Only active students, subject-faculty check, entry constraints.\n\n## Test Classes & Methods\n\n### `AttendanceBatchControllerTest`\n1. **testMarkBatchAttendance_ValidRequest_Returns200** — Standard successful batch marking.\n2. **testMarkBatchAttendance_LargeBatch_Returns200** — Large batch of 500 students.\n3. **testMarkBatchAttendance_DuplicateStudentIds_IgnoresOrFailsAsPerSpec** — Duplicate IDs (if API ignores or fails).\n4. **testMarkBatchAttendance_InvalidSubject_Returns404** — Subject does not exist.\n5. **testMarkBatchAttendance_SubjectNotBelongToFaculty_Returns404** — Subject exists but is not owned by faculty.\n6. **testMarkBatchAttendance_EntriesEmpty_Returns400EmptyBatch** — Entries array empty.\n7. **testMarkBatchAttendance_AttendanceDateInFuture_Returns400** — Date in the future.\n8. **testMarkBatchAttendance_InactiveOrInvalidStudents_Reported** — Some student IDs inactive/invalid, reported in `invalidStudentIds`.\n\n\n### `AttendanceBatchValidationTest`\n1. **testMarkBatchAttendance_MissingRequiredFields_Returns400** — Request missing date or subjectId.\n2. **testMarkBatchAttendance_InvalidDateFormat_Returns400** — Date is not in `YYYY-MM-DD` format.\n\n\n## Assumptions\n- Auth is handled elsewhere (faculty user context present).\n- Duplicate student IDs are either deduplicated or treated as invalid by the API, verified in test.\n- All business rules, including subject ownership and student status, are enforced at API/service layer.\n",
-  "tests": [
-    {
-      "className": "AttendanceBatchControllerTest",
-      "javaCode": "import static org.mockito.Mockito.*;\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;\nimport org.junit.jupiter.api.Test;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;\nimport org.springframework.http.MediaType;\nimport org.springframework.test.web.servlet.MockMvc;\n\n@WebMvcTest\npublic class AttendanceBatchControllerTest {\n  @Autowired\n  MockMvc mockMvc;\n\n  @Test\n  void testMarkBatchAttendance_ValidRequest_Returns200() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"SUBJ123\\\",\\\"entries\\\":[{\" +\n        \"\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true},{\\\"studentId\\\":\\\"ST2\\\",\\\"present\\\":false}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isOk())\n      .andExpect(jsonPath(\"$.total\").value(2))\n      .andExpect(jsonPath(\"$.marked\").value(2))\n      .andExpect(jsonPath(\"$.invalidStudentIds\").isEmpty());\n  }\n\n  @Test\n  void testMarkBatchAttendance_LargeBatch_Returns200() throws Exception {\n    StringBuilder entries = new StringBuilder();\n    for(int i=0;i<500;i++) {\n      entries.append(String.format(\"{\\\"studentId\\\":\\\"STU%d\\\",\\\"present\\\":%s}\", i, (i%2==0)));\n      if(i<499) entries.append(\",\");\n    }\n    String json = String.format(\"{\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"SUBJ123\\\",\\\"entries\\\":[%s]}\", entries);\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isOk())\n      .andExpect(jsonPath(\"$.total\").value(500))\n      .andExpect(jsonPath(\"$.marked\").value(500));\n  }\n\n  @Test\n  void testMarkBatchAttendance_DuplicateStudentIds_IgnoresOrFailsAsPerSpec() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"SUBJ123\\\",\\\"entries\\\":[{\" +\n        \"\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true},{\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":false}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isOk())\n      .andExpect(jsonPath(\"$.total\").value(2))\n      .andExpect(jsonPath(\"$.marked\").value(1));\n  }\n\n  @Test\n  void testMarkBatchAttendance_InvalidSubject_Returns404() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"INVALID\\\",\\\"entries\\\":[{\" +\n        \"\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isNotFound())\n      .andExpect(jsonPath(\"$.code\").value(\"SUBJECT_NOT_FOUND\"));\n  }\n\n  @Test\n  void testMarkBatchAttendance_SubjectNotBelongToFaculty_Returns404() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"SUBJ_OTHER\\\",\\\"entries\\\":[{\" +\n        \"\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isNotFound())\n      .andExpect(jsonPath(\"$.code\").value(\"SUBJECT_NOT_FOUND\"));\n  }\n\n  @Test\n  void testMarkBatchAttendance_EntriesEmpty_Returns400EmptyBatch() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"SUBJ1\\\",\\\"entries\\\":[]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isBadRequest())\n      .andExpect(jsonPath(\"$.code\").value(\"EMPTY_BATCH\"));\n  }\n\n  @Test\n  void testMarkBatchAttendance_AttendanceDateInFuture_Returns400() throws Exception {\n    String futureDate = java.time.LocalDate.now().plusDays(1).toString();\n    String json = String.format(\"{\\\"date\\\":\\\"%s\\\",\\\"subjectId\\\":\\\"SUBJ1\\\",\\\"entries\\\":[{\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true}]}\", futureDate);\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isBadRequest());\n  }\n\n  @Test\n  void testMarkBatchAttendance_InactiveOrInvalidStudents_Reported() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"2024-05-21\\\",\\\"subjectId\\\":\\\"SUBJ1\\\",\\\"entries\\\":[{\" +\n        \"\\\"studentId\\\":\\\"ACTIVE1\\\",\\\"present\\\":true},{\\\"studentId\\\":\\\"INACTIVE1\\\",\\\"present\\\":false},{\\\"studentId\\\":\\\"INVALID\\\",\\\"present\\\":false}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON).content(json))\n      .andExpect(status().isOk())\n      .andExpect(jsonPath(\"$.invalidStudentIds\").isArray())\n      .andExpect(jsonPath(\"$.invalidStudentIds[0]\").value(\"INACTIVE1\"))\n      .andExpect(jsonPath(\"$.invalidStudentIds[1]\").value(\"INVALID\"));\n  }\n}\n"
-    },
-    {
-      "className": "AttendanceBatchValidationTest",
-      "javaCode": "import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;\nimport org.junit.jupiter.api.Test;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;\nimport org.springframework.http.MediaType;\nimport org.springframework.test.web.servlet.MockMvc;\n\n@WebMvcTest\npublic class AttendanceBatchValidationTest {\n  @Autowired\n  MockMvc mockMvc;\n\n  @Test\n  void testMarkBatchAttendance_MissingRequiredFields_Returns400() throws Exception {\n    // Missing date\n    String jsonMissingDate = \"{\\\"subjectId\\\":\\\"SUBJ1\\\",\\\"entries\\\":[{\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON)\n        .content(jsonMissingDate))\n      .andExpect(status().isBadRequest());\n\n    // Missing subjectId\n    String jsonMissingSubject = \"{\\\"date\\\":\\\"2024-05-21\\\",\\\"entries\\\":[{\\\"studentId\\\":\\\"ST1\\\",\\\"present\\\":true}]}\";\n    mockMvc.perform(post(\"/api/attendance/batch\")\n        .contentType(MediaType.APPLICATION_JSON)\n        .content(jsonMissingSubject))\n      .andExpect(status().isBadRequest());\n  }\n\n  @Test\n  void testMarkBatchAttendance_InvalidDateFormat_Returns400() throws Exception {\n    String json = \"{\" +\n        \"\\\"date\\\":\\\"21-05-2024\\\",\\\"subjectId\\\":
-```
+## 2. Positive Test Cases and Expected Outcomes
+
+### TC-P-001: Valid Request with Active Students
+
+- **Description:** Mark attendance for a batch of active students on a valid date where the subject belongs to the faculty.
+- **Input Parameters:**
+  - `date: "2023-12-12"`
+  - `subjectId: "subj001"`
+  - `entries: [{"studentId": "stu100", "present": true}, {"studentId": "stu101", "present": false}]`
+- **Expected Outcome:** Response Status 200 with totals and marked students count updated accurately, with an empty `invalidStudentIds` list.
+
+### TC-P-002: Valid Request with All Students Absent
+
+- **Description:** Test with all students marked as absent.
+- **Input Parameters:**
+  - `date: "2023-12-10"`
+  - `subjectId: "subj002"`
+  - `entries: [{"studentId": "stu102", "present": false}, {"studentId": "stu103", "present": false}]`
+- **Expected Outcome:** Response Status 200 where `marked` count is zero and `total` represents the number of students.
+
+### TC-P-003: Subject With No Enrollment
+
+- **Description:** Submit attendance for a subject with no students enrolled.
+- **Input Parameters:**
+  - `date: "2023-12-11"`
+  - `subjectId: "subj003"`
+  - `entries: []`
+- **Expected Outcome:** Response Status 400 with code `EMPTY_BATCH`.
+
+## 3. Negative Test Cases and Error Handling
+
+### TC-N-001: Future Attendance Date
+
+- **Description:** Attempt to mark attendance for a future date.
+- **Input Parameters:**
+  - `date: "2024-01-01"`
+  - `subjectId: "subj004"`
+  - `entries: [{"studentId": "stu104", "present": true}]`
+- **Expected Outcome:** Response Status 400 with context-specific error details.
+
+### TC-N-002: Subject Not Owned by Faculty
+
+- **Description:** Submit attendance for a subject not owned by the signed-in faculty member.
+- **Input Parameters:**
+  - `date: "2023-12-12"`
+  - `subjectId: "subj999"`
+  - `entries: [{"studentId": "stu105", "present": true}]`
+- **Expected Outcome:** Response Status 404 with code `SUBJECT_NOT_FOUND`.
+
+## 4. Edge Cases and Boundary Value Analysis
+
+### TC-E-001: Duplicate Student IDs in Entries
+
+- **Description:** Check system behavior when duplicate student IDs are provided in the entries.
+- **Input Parameters:**
+  - `date: "2023-12-12"`
+  - `subjectId: "subj005"`
+  - `entries: [{"studentId": "stu106", "present": true}, {"studentId": "stu106", "present": false}]`
+- **Expected Outcome:** Ensure system handles duplicates appropriately, possibly ignoring or flagging duplicates.
+
+### TC-E-002: Large Batch of 500 Students
+
+- **Description:** Test system performance and accuracy with a large batch of 500 students.
+- **Input Parameters:**
+  - `date: "2023-12-12"`
+  - `subjectId: "subj006"`
+  - A generated list of 500 students marked present or absent.
+- **Expected Outcome:** Response Status 200 with appropriate counts and without system delays or errors.
+
+## 5. Performance and Stress Scenarios
+
+### TC-PS-001: High Concurrency Test
+
+- **Description:** Test API behavior under high levels of concurrent access.
+- **Expected Outcome:** API should handle multiple requests without significant performance degradation or data inaccuracies.
+
+## 6. Security Considerations
+
+### TC-S-001: Unauthorized Access Attempt
+
+- **Description:** Attempt API access with invalid authentication tokens.
+- **Expected Outcome:** Response Status 401 or 403, ensuring unauthorized users cannot access or alter attendance data.
+
+### TC-S-002: Injection Attack Vulnerability Test
+
+- **Description:** Test for potential security breaches by injecting malicious code into input fields.
+- **Expected Outcome:** API should properly sanitize inputs and prevent injection, ensuring system stability and security.
+
+This comprehensive plan strives to cover functional correctness, performance, and security aspects of the "Mark batch attendance" API, thereby supporting its deployment in a production environment.
