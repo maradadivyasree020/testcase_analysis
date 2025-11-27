@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(classes = com.example.college.CollegeApplication.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 public class SpecDrivenAttendanceApiTest {
@@ -46,7 +46,7 @@ public class SpecDrivenAttendanceApiTest {
         }
     }
 
-    @ParameterizedTest(name = "TC {index}: {0.testCase.description}")
+    @ParameterizedTest(name = "TC {index}: {0}")
     @MethodSource("testCases")
     @DisplayName("Spec-driven API tests for ATT-123")
     void runSpecDrivenTests(TestCaseWithMeta data) throws Exception {
