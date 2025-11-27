@@ -1,0 +1,51 @@
+storyId: ATT-123
+api:
+  method: POST
+  path: /api/attendance/batch
+
+tests:
+  - id: 1
+    name: valid_active_students
+    description: Valid request with active students
+    requestBody: |
+      {
+        "date": "2023-12-12",
+        "subjectId": "subj001",
+        "entries": [
+          { "studentId": "stu100", "present": true },
+          { "studentId": "stu101", "present": false }
+        ]
+      }
+    expectedStatus: 200
+    expectedJson:
+      - path: $.total
+        value: 2
+      - path: $.marked
+        value: 2
+
+  - id: 2
+    name: future_date_rejected
+    description: Future date should be rejected
+    requestBody: |
+      {
+        "date": "2999-01-01",
+        "subjectId": "subj004",
+        "entries": [
+          { "studentId": "stu104", "present": true }
+        ]
+      }
+    expectedStatus: 400
+
+  - id: 3
+    name: empty_batch
+    description: Empty entries should return EMPTY_BATCH
+    requestBody: |
+      {
+        "date": "2023-12-11",
+        "subjectId": "subj003",
+        "entries": []
+      }
+    expectedStatus: 400
+    expectedJson:
+      - path: $.codes[0]
+        value: EMPTY_BATCH

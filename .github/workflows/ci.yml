@@ -10,12 +10,6 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
 
-    env:
-      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
-      LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}
-      LLM_MODEL:    ${{ secrets.LLM_MODEL }}
-      LLM_MAX_TOKENS: "2500"
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,55 +21,28 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # 1️⃣ Build project (no tests yet)
       - name: Build (skip tests)
         run: mvn -B -DskipTests clean package
 
-      # 1️⃣ Generate AI report + AI tests FROM STORY (runs StoryReportGenerator in CI)
-      - name: Generate tests & AI report from story
-        if: ${{ env.LLM_BASE_URL != '' && env.LLM_API_KEY != '' }}
-        continue-on-error: true
-        run: |
-          mkdir -p reports
-          echo "Generating AI report from story: stories/ATT-123.yaml"
-          echo "LLM_BASE_URL is set to: $LLM_BASE_URL"
-          echo "LLM_MODEL is: ${LLM_MODEL:-openai/gpt-4.1 (default)}"
-
-          mvn -DskipTests compile \
-              -Dexec.mainClass=com.example.tools.StoryReportGenerator \
-              -Dexec.args="--storyFile=stories/ATT-123.yaml --outputFile=reports/ATT-123-ai-report.md" \
-              -Dexec.cleanupDaemonThreads=false \
-              org.codehaus.mojo:exec-maven-plugin:3.1.0:java || {
-            echo ""
-            echo "ERROR: AI report generation failed. See logs above."
-            exit 1
-          }
-
-      # 2️⃣ If LLM secrets missing OR generation failed, write a placeholder report
-      - name: Write placeholder AI report (LLM secrets missing or generation failed)
-        if: ${{ failure() || !(env.LLM_BASE_URL != '' && env.LLM_API_KEY != '') }}
-        run: |
-          mkdir -p reports
-          echo "# AI Report Unavailable" > reports/ATT-123-ai-report.md
-          echo "" >> reports/ATT-123-ai-report.md
-          echo "The AI story report was not generated. Possible reasons:" >> reports/ATT-123-ai-report.md
-          echo "- LLM secrets (LLM_BASE_URL, LLM_API_KEY) are not configured in repository settings" >> reports/ATT-123-ai-report.md
-          echo "- LLM_BASE_URL is malformed (has newlines, trailing slashes, or includes /v1/chat/completions)" >> reports/ATT-123-ai-report.md
-          echo "- LLM_API_KEY is invalid or expired" >> reports/ATT-123-ai-report.md
-          echo "- LLM provider is unreachable or returned an error" >> reports/ATT-123-ai-report.md
-          echo "" >> reports/ATT-123-ai-report.md
-          echo "## Fix Instructions" >> reports/ATT-123-ai-report.md
-          echo "1. Go to your GitHub repository Settings → Secrets and variables → Actions" >> reports/ATT-123-ai-report.md
-          echo "2. Create or update these secrets:" >> reports/ATT-123-ai-report.md
-          echo "   - \`LLM_BASE_URL\`: e.g., https://openrouter.ai/api or https://api.openai.com" >> reports/ATT-123-ai-report.md
-          echo "   - \`LLM_API_KEY\`: Your API key from the provider" >> reports/ATT-123-ai-report.md
-          echo "   - \`LLM_MODEL\`: e.g., openai/gpt-4.1" >> reports/ATT-123-ai-report.md
-          echo "3. Push a new commit to trigger the workflow again" >> reports/ATT-123-ai-report.md
-
-      # 3️⃣ Run tests in CI (includes AI-generated tests if generation succeeded)
-      - name: Run tests (includes AI-generated tests)
+      # 2️⃣ Run all tests (includes spec-driven test class)
+      #    SpecDrivenAttendanceApiTest will read qa/ATT-123-tests.yaml
+      - name: Run tests
         run: mvn -B test
 
-      # 4️⃣ Check if surefire reports exist
+      # 3️⃣ Generate custom summary:
+      #    TC x: desc : ACCEPTED / REJECTED (reason: ...)
+      - name: Generate spec-based test summary
+        run: |
+          mvn -q \
+            -Dexec.mainClass=com.example.tools.TestResultSummaryGenerator \
+            -Dexec.cleanupDaemonThreads=false \
+            org.codehaus.mojo:exec-maven-plugin:3.6.2:java > summary.txt
+
+          echo "---- SUMMARY ----"
+          cat summary.txt
+
+      # 4️⃣ Check for surefire reports (JUnit XML)
       - name: Check for surefire reports
         id: check-surefire
         run: |
@@ -85,31 +52,13 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      # 5️⃣ Generate custom ACCEPTED / REJECTED summary and append to AI report
-      - name: Generate test summary and append to AI report
-        if: steps.check-surefire.outputs.exists == 'true'
-        run: |
-          # Run the summary generator and capture output
-          mvn -Dexec.mainClass=com.example.tools.TestResultSummaryGenerator \
-              -Dexec.cleanupDaemonThreads=false \
-              org.codehaus.mojo:exec-maven-plugin:3.1.0:java > summary.txt
-
-          # Ensure reports dir exists
-          mkdir -p reports
-
-          # Append summary into the same AI report markdown
-          echo "" >> reports/ATT-123-ai-report.md
-          echo "## 7. Execution Summary" >> reports/ATT-123-ai-report.md
-          cat summary.txt >> reports/ATT-123-ai-report.md
-
-      # 6️⃣ Upload final AI report (plan + execution result) as artifact
-      - name: Upload AI story report
+      # 5️⃣ Upload summary and JUnit XML as artifacts
+      - name: Upload test summary
         uses: actions/upload-artifact@v4
         with:
-          name: ATT-123-ai-report
-          path: reports/ATT-123-ai-report.md
+          name: test-summary
+          path: summary.txt
 
-      # 7️⃣ Upload JUnit reports if they exist
       - name: Upload JUnit reports
         if: steps.check-surefire.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
