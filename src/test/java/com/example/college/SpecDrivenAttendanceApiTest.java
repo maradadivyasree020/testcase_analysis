@@ -1,4 +1,4 @@
-package com.example.generated;
+package com.example.college;
 
 import com.example.tools.spec.TestSpec;
 import com.jayway.jsonpath.JsonPath;
@@ -20,34 +20,50 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+/**
+ * Spec-driven test: reads qa/ATT-123-tests.yaml from classpath
+ * and runs one parameterized test per test case.
+ */
+@SpringBootTest(classes = CollegeApplication.class)  // ⬅️ CHANGE IF YOUR MAIN CLASS NAME IS DIFFERENT
 @AutoConfigureMockMvc
 public class SpecDrivenAttendanceApiTest {
 
     @Autowired
     MockMvc mockMvc;
 
-    private static final String SPEC_PATH = "/qa/ATT-123-tests.yaml";
+    // classpath resource under src/test/resources
+    private static final String SPEC_PATH = "qa/ATT-123-tests.yaml";
 
+    /**
+     * Loads the YAML spec and exposes each test case as an argument
+     * to the @ParameterizedTest below.
+     */
     static Stream<TestCaseWithMeta> testCases() throws Exception {
-        try (InputStream is = SpecDrivenAttendanceApiTest.class.getResourceAsStream(SPEC_PATH)) {
+        ClassLoader cl = SpecDrivenAttendanceApiTest.class.getClassLoader();
+        try (InputStream is = cl.getResourceAsStream(SPEC_PATH)) {
             if (is == null) {
                 throw new IllegalStateException("Spec file not found on classpath: " + SPEC_PATH);
             }
             Yaml yaml = new Yaml();
             TestSpec spec = yaml.loadAs(is, TestSpec.class);
+
+            if (spec.getTests() == null || spec.getTests().isEmpty()) {
+                throw new IllegalStateException("No tests found in spec: " + SPEC_PATH);
+            }
+
             return spec.getTests().stream()
-                    .map(tc -> new TestCaseWithMeta(spec.getApi().getPath(), tc));
+                    .map(tc -> new TestCaseWithMeta(spec.getApi().getMethod(), spec.getApi().getPath(), tc));
         }
     }
 
-    @ParameterizedTest(name = "TC {index}: {0.testCase.description}")
+    @ParameterizedTest(name = "TC {0.testCase.id}: {0.testCase.description}")
     @MethodSource("testCases")
     @DisplayName("Spec-driven API tests for ATT-123")
     void runSpecDrivenTests(TestCaseWithMeta data) throws Exception {
         TestSpec.TestCase tc = data.testCase;
 
-        var requestBuilder = post(data.path)  // API is POST in this story
+        // For now we assume POST (based on your API), but we can extend to GET/PUT later
+        var requestBuilder = post(data.path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(tc.getRequestBody());
 
@@ -70,10 +86,12 @@ public class SpecDrivenAttendanceApiTest {
 
     // Helper wrapper for method source
     static class TestCaseWithMeta {
+        final String method;
         final String path;
         final TestSpec.TestCase testCase;
 
-        TestCaseWithMeta(String path, TestSpec.TestCase testCase) {
+        TestCaseWithMeta(String method, String path, TestSpec.TestCase testCase) {
+            this.method = method;
             this.path = path;
             this.testCase = testCase;
         }
